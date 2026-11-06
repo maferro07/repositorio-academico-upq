@@ -1,0 +1,198 @@
+# ═══════════════════════════════════════════════════════════════════════
+#  MINI DATA CENTER · Ejercicio 1 — Balanceo de carga con Nginx
+#  Asignatura: Centro de Datos · Ing. en Datos e Inteligencia Artificial
+#
+#  Arranque:   cp .env.example .env      (y cambia las contraseñas)
+#              docker compose up -d --build
+#  Abre:       http://localhost:8080   → app balanceada (3 nodos)
+#              http://localhost:3000   → Grafana (monitoreo y logs)
+#              https://localhost:9443  → Portainer (gestión visual)
+#
+#  Mapa de capas (piensa en un edificio):
+#    lb ........... la recepción: reparte a los visitantes (balanceador)
+#    web1..web3 ... los departamentos: 3 páginas estáticas distintas
+#    api + db ..... el archivo: guarda visitas y pruebas en MariaDB
+#    alloy/loki/grafana ... el sistema nervioso: logs y tableros
+#    portainer .... la consola del administrador del edificio
+# ═══════════════════════════════════════════════════════════════════════
+name: minidc
+
+# ---- Bloques reutilizables (anclas YAML: escribe una vez, usa N veces) ----
+x-logging: &logging              # rota los logs para no llenar el disco del host
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+x-nodo-web: &nodo-web            # "la clase" de la que heredan los 3 nodos web
+  image: nginx:1.28-alpine
+  restart: unless-stopped
+  networks: [red_publica]
+  logging: *logging
+  healthcheck:
+    test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/whoami || exit 1"]
+    interval: 10s
+    timeout: 3s
+    retries: 3
+
+services:
+  # ─────────────────────────── CAPA DE ENTRADA ───────────────────────────
+  lb:
+    image: nginx:1.28-alpine          # ≥1.27.3: soporta "resolve" en upstream
+    restart: unless-stopped
+    ports:
+      - "${LB_PUERTO:-8080}:80"       # PUERTO_HOST:PUERTO_CONTENEDOR
+    volumes:
+      - ./nginx/lb.conf:/etc/nginx/conf.d/default.conf:ro
+    networks: [red_publica]
+    depends_on: [web1, web2, web3]     # sin api: la web funciona aunque falle la capa de datos
+    logging: *logging
+
+  # ─────────────────────── GRANJA WEB (3 réplicas) ───────────────────────
+  # ✏️ ZONA EDITABLE: cambia NODO_NOMBRE / NODO_COLOR y observa el efecto.
+  web1:
+    <<: *nodo-web
+    environment:
+      NODO_ID: web1
+      NODO_NOMBRE: "Nodo Alfa"
+      NODO_COLOR: "#1f6feb"
+    volumes:
+      - ./sitios/web1:/usr/share/nginx/html:ro          # página propia del nodo
+      - ./sitios/comun:/usr/share/nginx/comun:ro        # CSS/JS compartidos
+      - ./nginx/nodo.conf.template:/etc/nginx/templates/default.conf.template:ro
+
+  web2:
+    <<: *nodo-web
+    environment:
+      NODO_ID: web2
+      NODO_NOMBRE: "Nodo Beta"
+      NODO_COLOR: "#d97706"
+    volumes:
+      - ./sitios/web2:/usr/share/nginx/html:ro
+      - ./sitios/comun:/usr/share/nginx/comun:ro
+      - ./nginx/nodo.conf.template:/etc/nginx/templates/default.conf.template:ro
+
+  web3:
+    <<: *nodo-web
+    environment:
+      NODO_ID: web3
+      NODO_NOMBRE: "Nodo Gamma"
+      NODO_COLOR: "#16a34a"
+    volumes:
+      - ./sitios/web3:/usr/share/nginx/html:ro
+      - ./sitios/comun:/usr/share/nginx/comun:ro
+      - ./nginx/nodo.conf.template:/etc/nginx/templates/default.conf.template:ro
+
+  # ───────────────────────── CAPA DE DATOS ──────────────────────────────
+  api:                                 # imagen propia: Dockerfile en ./api
+    build: ./api
+    image: minidc/api:1.0
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_NAME: dc_app
+      DB_USER: app_user                # usuario con permisos mínimos (SELECT, INSERT)
+      DB_PASSWORD: ${APP_DB_PASSWORD:?Define APP_DB_PASSWORD en el archivo .env}
+    networks: [red_publica, red_datos] # puente entre la capa web y la de datos
+    depends_on:
+      db: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/api/salud',timeout=3).status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    logging: *logging
+
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Define DB_ROOT_PASSWORD en el archivo .env}
+      MARIADB_DATABASE: dc_app
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}          # los usa mariadb/init/02_usuarios.sh
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:?Define GRAFANA_DB_PASSWORD en el archivo .env}
+    volumes:
+      - db_data:/var/lib/mysql                     # ← PERSISTENCIA: los datos viven aquí
+      - ./mariadb/init:/docker-entrypoint-initdb.d:ro   # solo corre la 1.ª vez
+    ports:
+      # Solo accesible desde TU máquina (no desde la red). Se usa 3307 en el host
+      # para no chocar con un MySQL/MariaDB/XAMPP que ya tengas instalado en 3306.
+      # Conéctate desde DBeaver/Workbench a 127.0.0.1:3307. Dentro de Docker sigue siendo db:3306.
+      - "127.0.0.1:${DB_PUERTO:-3307}:3306"
+    networks: [red_datos]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    logging: *logging
+
+  # ─────────────────────── OBSERVABILIDAD (logs) ────────────────────────
+  loki:                                # base de datos de logs
+    image: grafana/loki:3.6.12
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki.yaml
+    volumes:
+      - ./observabilidad/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki_data:/loki
+    networks: [red_datos]
+    logging: *logging
+
+  alloy:                               # recolector: lee la salida de cada contenedor
+    image: grafana/alloy:v1.17.1
+    restart: unless-stopped
+    command: run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
+    volumes:
+      - ./observabilidad/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "127.0.0.1:12345:12345"        # UI de Alloy (opcional, solo local)
+    networks: [red_datos]
+    depends_on: [loki]
+    logging: *logging
+
+  grafana:                             # tableros + acceso con credenciales
+    image: grafana/grafana:12.4.4
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin_dc}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Define GRAFANA_ADMIN_PASSWORD en el archivo .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"            # nadie se registra por su cuenta
+      GF_AUTH_ANONYMOUS_ENABLED: "false"         # sin acceso anónimo
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/minidc.json
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD} # lo lee el datasource de MariaDB
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    ports:
+      - "${GRAFANA_PUERTO:-3000}:3000"
+    networks: [red_datos]
+    depends_on: [loki, db]
+    logging: *logging
+
+  # ─────────────────────────── GESTIÓN ───────────────────────────────────
+  portainer:
+    image: portainer/portainer-ce:lts
+    restart: unless-stopped
+    command: -H unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    ports:
+      - "9443:9443"     # HTTPS (recomendado)
+    networks: [red_gestion]
+    logging: *logging
+
+# ──────────────── Volúmenes: el "disco externo" de cada servicio ────────────
+volumes:
+  db_data:          # MariaDB: visitas y pruebas de carga
+  loki_data:        # historial de logs
+  grafana_data:     # usuarios, preferencias y sesiones de Grafana
+  portainer_data:   # configuración y usuario admin de Portainer
+
+# ──────────────── Redes: segmentación por capas (seguridad) ────────────────
+networks:
+  red_publica:      # lb ↔ web1..3 ↔ api
+  red_datos:        # api ↔ db ↔ grafana ↔ loki ↔ alloy   (los nodos web NO la ven)
+  red_gestion:      # portainer aislado

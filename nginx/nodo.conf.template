@@ -1,0 +1,36 @@
+# ═══════════════════════════════════════════════════════════════════
+#  PLANTILLA DE CADA NODO WEB (web1, web2, web3)
+#  La imagen oficial de nginx reemplaza ${VARIABLES} con las variables
+#  de entorno del docker-compose.yml al arrancar (envsubst).
+#  Una sola plantilla → tres nodos con identidad distinta.
+# ═══════════════════════════════════════════════════════════════════
+server {
+    listen 80;
+    server_name _;
+    server_tokens off;
+    root  /usr/share/nginx/html;
+    index index.html;
+
+    # Firma del nodo en cada respuesta: el balanceador la registra.
+    add_header X-Nodo "${NODO_ID}" always;
+
+    location / {
+        add_header X-Nodo "${NODO_ID}" always;
+        add_header Cache-Control "no-cache" always;   # para ver el cambio al recargar
+        try_files $uri $uri/ =404;
+    }
+
+    # Recursos compartidos por los 3 nodos (CSS, JS, config)
+    location /comun/ {
+        add_header X-Nodo "${NODO_ID}" always;
+        alias /usr/share/nginx/comun/;
+    }
+
+    # "¿Quién soy?" → la página lo pregunta muchas veces durante la prueba
+    location = /whoami {
+        default_type application/json;
+        add_header X-Nodo "${NODO_ID}" always;
+        add_header Cache-Control "no-store" always;
+        return 200 '{"nodo":"${NODO_ID}","nombre":"${NODO_NOMBRE}","color":"${NODO_COLOR}","host":"$hostname","ip":"$server_addr","hora":"$time_iso8601"}';
+    }
+}

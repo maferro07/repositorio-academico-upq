@@ -1,0 +1,48 @@
+// ═══════════════════════════════════════════════════════════════
+//  Grafana Alloy: el "recolector" de logs.
+//  1) Descubre los contenedores del proyecto minidc vía docker.sock
+//  2) Les pone etiquetas legibles (servicio, contenedor, proyecto)
+//  3) Lee su salida estándar y la envía a Loki
+// ═══════════════════════════════════════════════════════════════
+
+discovery.docker "minidc" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "5s"
+
+  // Solo los contenedores de ESTE proyecto (name: minidc en el compose)
+  filter {
+    name   = "label"
+    values = ["com.docker.compose.project=minidc"]
+  }
+}
+
+discovery.relabel "minidc" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "contenedor"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "servicio"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "proyecto"
+  }
+}
+
+loki.source.docker "minidc" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.minidc.targets
+  relabel_rules = discovery.relabel.minidc.rules
+  forward_to    = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

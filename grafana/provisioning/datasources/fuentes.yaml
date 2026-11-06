@@ -1,0 +1,26 @@
+# Grafana arranca con estas dos fuentes de datos ya configuradas
+# ("aprovisionamiento" = infraestructura como código).
+apiVersion: 1
+
+datasources:
+  - name: Loki · bitácoras
+    uid: loki-minidc
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    isDefault: true
+    editable: false
+
+  - name: MariaDB · dc_app
+    uid: mariadb-minidc
+    type: mysql
+    access: proxy
+    url: db:3306
+    user: grafana_ro               # usuario de SOLO LECTURA
+    editable: false
+    jsonData:
+      database: dc_app
+      maxOpenConns: 5
+      timezone: "-06:00"
+    secureJsonData:
+      password: ${GRAFANA_DB_PASSWORD}   # viene del .env, no se escribe aquí

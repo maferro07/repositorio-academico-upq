@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MiniDC · Nodo Alfa (web1)</title>
+  <meta name="description" content="Mini Data Center con Docker · Ejercicio 1: balanceo de carga con Nginx entre tres nodos web.">
+  <link rel="icon" href="../comun/favicon.svg" type="image/svg+xml">
+  <!-- Las rutas "../comun/" funcionan en ambos casos:
+       · servido por Nginx  → /comun/... (alias en nodo.conf.template)
+       · abierto con doble clic desde la carpeta → sitios/comun/...  (modo simulación) -->
+  <link rel="stylesheet" href="../comun/estilos.css">
+
+  <!-- ════════════════════════════════════════════════════════════════
+       ✏️ ZONA EDITABLE A · IDENTIDAD DE ESTE NODO
+       Archivo: sitios/web1/index.html  → solo lo sirve el contenedor web1
+       Cambia nombre, color o mensaje, guarda y recarga el navegador:
+       como la carpeta está montada (bind mount), NO necesitas reiniciar.
+       ════════════════════════════════════════════════════════════════ -->
+  <script>
+    window.NODO = {
+      id:      "web1",            // igual que NODO_ID en docker-compose.yml
+      nombre:  "Nodo Alfa",
+      color:   "#1f6feb",
+      rack:    "Rack A · U12",
+      rol:     "Servidor web estático · réplica 1 de 3",
+      mensaje: "Soy el primer nodo de la granja. Si me apagas (docker compose stop web1), el balanceador seguirá atendiendo con mis dos compañeros: eso es alta disponibilidad."
+    };
+  </script>
+
+  <script src="../comun/config.js" defer></script>
+  <script src="../comun/app.js" defer></script>
+</head>
+<body>
+
+<!-- ═════════════════════════ BARRA SUPERIOR ═════════════════════════ -->
+<header class="barra">
+  <div class="contenedor">
+    <a class="marca" href="#inicio">
+      <img src="../comun/favicon.svg" alt="" width="28" height="28">
+      <span>Mini Data Center <small>Ejercicio 1 · Balanceo de carga</small></span>
+    </a>
+    <span id="modo" class="modo" title="Detectando si hay contenedores detrás…">Detectando…</span>
+    <nav aria-label="Secciones">
+      <a href="#diagrama">Arquitectura</a>
+      <a href="#laboratorio">Laboratorio</a>
+      <a href="#persistencia">Persistencia</a>
+      <a href="#monitoreo">Monitoreo</a>
+      <a href="#retos">Retos</a>
+      <a href="#comandos">Comandos</a>
+    </nav>
+    <button class="flotante-tema" id="btn-lapices" type="button" title="Mostrar u ocultar las marcas de zonas editables">✏️ Marcas</button>
+    <button class="flotante-tema" id="btn-tema" type="button" title="Cambiar tema claro/oscuro">🌓 Tema</button>
+  </div>
+</header>
+
+<!-- ═════════════════════════ HERO: ¿QUIÉN ME SIRVIÓ? ═════════════════════════ -->
+<section class="hero" id="inicio">
+  <div class="contenedor hero-grid">
+    <div>
+      <span class="eyebrow">Esta página te la entregó…</span>
+      <h1 class="servido editable">
+        <span class="nombre-nodo" data-nodo="nombre">Nodo Alfa</span><span class="id-nodo" data-nodo="id">web1</span>
+      </h1>
+      <p class="lead">
+        Tres contenedores <b>Nginx</b> sirven tres páginas distintas, y un cuarto Nginx actúa como
+        <b>balanceador de carga</b>: decide, petición por petición, qué nodo responde.
+        Tú no ves el reparto… hasta ahora.
+      </p>
+      <p class="tip">🔁 Pulsa <kbd>F5</kbd> varias veces: el color y el nombre del nodo deberían ir cambiando.</p>
+      <p style="margin-top:10px"><span class="lapiz" title="sitios/web1/index.html → window.NODO">✏️ sitios/web1/index.html · ZONA A</span></p>
+      <div class="servicios" id="servicios" aria-live="polite">
+        <span class="svc" data-svc="lb"><i></i><b>Balanceador</b> <span>:8080</span></span>
+        <span class="svc" data-svc="nodos"><i></i><b>Nodos</b> <span>—</span></span>
+        <span class="svc" data-svc="api"><i></i><b>API</b> <span>—</span></span>
+        <span class="svc" data-svc="db"><i></i><b>MariaDB</b> <span>—</span></span>
+        <span class="svc" data-svc="grafana"><i></i><b>Grafana</b> <span>—</span></span>
+        <span class="svc" data-svc="portainer"><i></i><b>Portainer</b> <span>—</span></span>
+      </div>
+    </div>
+
+    <aside class="ficha" aria-label="Ficha técnica del nodo">
+      <header><span class="led"></span><b>Ficha del nodo</b><span class="lapiz" style="margin-left:auto" title="Edita window.NODO en sitios/web1/index.html">✏️ ZONA A</span></header>
+      <dl>
+        <dt>ID</dt>          <dd data-nodo="id">web1</dd>
+        <dt>Ubicación</dt>   <dd data-nodo="rack">Rack A · U12</dd>
+        <dt>Rol</dt>         <dd data-nodo="rol">Servidor web estático · réplica 1 de 3</dd>
+        <dt>Contenedor</dt>  <dd id="ficha-host">—</dd>
+        <dt>IP interna</dt>  <dd id="ficha-ip">—</dd>
+        <dt>Volumen</dt>     <dd>./sitios/web1 → /usr/share/nginx/html (solo lectura)</dd>
+      </dl>
+      <p class="mensaje" data-nodo="mensaje">Soy el primer nodo de la granja. Si me apagas (docker compose stop web1), el balanceador seguirá atendiendo con mis dos compañeros: eso es alta disponibilidad.</p>
+    </aside>
+  </div>
+</section>
+
+<main>
+<!-- ═════════════════════════ 01 · ARQUITECTURA ═════════════════════════ -->
+<section class="bloque" id="diagrama">
+  <div class="contenedor">
+    <div class="titulo-bloque"><span class="num">01</span><h2>Tu mini data center, en vivo</h2></div>
+    <p class="sub">
+      Cada punto luminoso es una petición HTTP. Entra por el puerto <code>8080</code> del host, llega al
+      balanceador y este la reenvía a un nodo de la <code>granja_web</code>. En la simulación puedes
+      <b>hacer clic en un nodo para apagarlo</b> y ver cómo el balanceador lo esquiva.
+    </p>
+    <div class="sala">
+      <svg id="diagrama-svg" role="img" aria-label="Diagrama: navegador, balanceador Nginx, nodos web, API, MariaDB, observabilidad y Portainer"></svg>
+      <div class="leyenda">
+        <span><b></b> petición HTTP</span>
+        <span><i></i> tráfico de la app</span>
+        <span><i class="punteado"></i> logs (stdout → Alloy → Loki)</span>
+        <span>Clic en un nodo = encender / apagar (simulación)</span>
+      </div>
+    </div>
+
+    <div class="pasos-flujo">
+      <div class="paso"><b>Tu navegador pide</b><code>http://localhost:8080</code>. El host reenvía ese puerto al contenedor <code>lb</code> (mapeo <code>8080:80</code>).</div>
+      <div class="paso"><b>El balanceador elige</b>Nginx aplica el algoritmo del bloque <code>upstream granja_web</code>: round robin, pesos, least_conn o ip_hash.</div>
+      <div class="paso"><b>Un nodo responde</b>Cada nodo tiene su propia carpeta (volumen) y firma la respuesta con la cabecera <code>X-Nodo</code>.</div>
+      <div class="paso"><b>Todo queda registrado</b>La bitácora JSON viaja a Loki y se ve en Grafana; visitas y pruebas se guardan en MariaDB.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════ 02 · LABORATORIO ═════════════════════════ -->
+<section class="bloque" id="laboratorio">
+  <div class="contenedor">
+    <div class="titulo-bloque"><span class="num">02</span><h2>Laboratorio de balanceo de carga</h2></div>
+    <p class="sub">
+      Lanza una ráfaga de peticiones a <code>/whoami</code> (a través del balanceador) y observa cómo se
+      reparten. En <b>modo en vivo</b> el algoritmo lo decide <code>nginx/lb.conf</code>; en <b>modo simulación</b>
+      puedes cambiarlo aquí para predecir qué pasará antes de editar el archivo real.
+    </p>
+
+    <div class="lab">
+      <div class="tarjeta" aria-label="Controles de la prueba">
+        <div class="control">
+          <label for="algoritmo">Algoritmo <span class="lapiz" title="nginx/lb.conf → upstream granja_web (ZONA 1)">✏️ lb.conf · ZONA 1</span></label>
+          <select id="algoritmo">
+            <option value="round_robin">Round robin (por turnos)</option>
+            <option value="weighted">Round robin ponderado (weight=)</option>
+            <option value="least_conn">least_conn (menos conexiones)</option>
+            <option value="ip_hash">ip_hash (afinidad por cliente)</option>
+          </select>
+          <small id="algoritmo-ayuda">Cada nodo recibe una petición por turno: 1 → 2 → 3 → 1…</small>
+        </div>
+
+        <div class="control oculto" id="control-clientes">
+          <span class="etq">Clientes simulados</span>
+          <div class="segmentado" role="group" aria-label="Clientes simulados">
+            <button type="button" data-clientes="uno" aria-pressed="true">Solo yo</button>
+            <button type="button" data-clientes="muchos" aria-pressed="false">Muchas redes</button>
+          </div>
+          <small>ip_hash usa los <b>3 primeros octetos</b> de la IP: todo 192.168.1.x cae en el mismo nodo.</small>
+        </div>
+
+        <div class="control">
+          <label for="total">Peticiones <output id="total-v">30</output></label>
+          <input type="range" id="total" min="3" max="300" step="3" value="30">
+        </div>
+        <div class="control">
+          <label for="concurrencia">Concurrencia <output id="concurrencia-v">1</output></label>
+          <input type="range" id="concurrencia" min="1" max="12" value="1">
+          <small>Peticiones simultáneas. Súbela para que <code>least_conn</code> tenga sentido.</small>
+        </div>
+        <div class="control">
+          <label for="ritmo">Pausa entre peticiones <output id="ritmo-v">120 ms</output></label>
+          <input type="range" id="ritmo" min="0" max="600" step="20" value="120">
+          <small>Solo para que alcances a ver los paquetes viajar.</small>
+        </div>
+
+        <div class="control">
+          <span class="etq">Nodos de la granja <span class="lapiz" title="nginx/lb.conf → server ... weight= (ZONA 2)">✏️ lb.conf · ZONA 2</span></span>
+          <div class="toggles" id="toggles"></div>
+          <div class="aviso-vivo oculto" id="aviso-vivo">
+            En vivo, apaga un nodo de verdad:<br><code>docker compose stop web2</code><br>y vuelve a lanzar la prueba. Los pesos se cambian en <code>nginx/lb.conf</code>.
+          </div>
+        </div>
+
+        <button class="btn btn-primario" id="lanzar" type="button">▶ Lanzar prueba</button>
+        <div style="display:flex; gap:8px; margin-top:8px">
+          <button class="btn btn-sec btn-chico" id="reiniciar" type="button" style="flex:1">Reiniciar contadores</button>
+          <button class="btn btn-sec btn-chico" id="guardar" type="button" style="flex:1" disabled>💾 Guardar en MariaDB</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="medidores" id="medidores" aria-live="polite"></div>
+        <div class="resumen">
+          <div class="kpi"><span>Enviadas</span><b id="kpi-total">0</b></div>
+          <div class="kpi"><span>Éxitos</span><b id="kpi-ok">0</b></div>
+          <div class="kpi" id="kpi-fallos-caja"><span>Fallos</span><b id="kpi-fallos">0</b></div>
+          <div class="kpi"><span>Tiempo prom.</span><b id="kpi-ms">— ms</b></div>
+          <div class="kpi" title="100 % = reparto idéntico al esperado según algoritmo y pesos"><span>Equilibrio</span><b id="kpi-eq">—</b></div>
+        </div>
+        <div class="bitacora">
+          <table>
+            <thead><tr><th>#</th><th>Hora</th><th>Nodo</th><th>Estado</th><th>ms</th><th>Contenedor</th></tr></thead>
+            <tbody id="bitacora"><tr><td colspan="6" class="vacio">Lanza una prueba para ver la bitácora del balanceador.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════ 03 · PERSISTENCIA ═════════════════════════ -->
+<section class="bloque" id="persistencia">
+  <div class="contenedor">
+    <div class="titulo-bloque"><span class="num">03</span><h2>Persistencia: MariaDB + volumen <code>db_data</code></h2></div>
+    <p class="sub">
+      Los contenedores son efímeros; los datos no deberían serlo. Cada prueba que guardes viaja
+      <code>página → balanceador → API → MariaDB</code> y se escribe en el volumen <code>db_data</code>,
+      que sobrevive aunque destruyas y recrees el contenedor.
+    </p>
+    <div class="rejilla-2">
+      <div class="tarjeta">
+        <h3>Historial de pruebas <span class="mono" style="color:var(--texto-3); font-weight:500">· tabla pruebas</span></h3>
+        <div class="bitacora" style="max-height:330px">
+          <table>
+            <thead><tr><th>Fecha</th><th>Algoritmo</th><th>Total</th><th>OK / Fallo</th><th>Reparto</th><th>ms</th></tr></thead>
+            <tbody id="historial"><tr><td colspan="6" class="vacio">Aún no hay pruebas guardadas.</td></tr></tbody>
+          </table>
+        </div>
+        <h3 style="margin-top:16px">Visitas por nodo <span class="mono" style="color:var(--texto-3); font-weight:500">· tabla visitas</span></h3>
+        <div id="visitas" class="medidores"></div>
+      </div>
+      <div class="tarjeta">
+        <h3>🧪 Experimento de persistencia</h3>
+        <p style="color:var(--texto-2)">Guarda 2 o 3 pruebas y luego, en la terminal:</p>
+        <pre class="codigo"><span class="c"># 1) Destruye los contenedores (el volumen se queda)</span>
+<span class="k">docker compose down</span>
+<span class="c"># 2) Vuelve a levantar todo</span>
+<span class="k">docker compose up -d</span>
+<span class="c"># → recarga la página: ¿sigue el historial? ✅</span>
+
+<span class="c"># 3) Ahora destruye TAMBIÉN los volúmenes</span>
+<span class="k">docker compose down -v</span>
+<span class="k">docker compose up -d</span>
+<span class="c"># → ¿qué pasó con el historial? ¿y con tu usuario de Grafana?</span></pre>
+        <p style="margin-top:12px; color:var(--texto-2); font-size:.92rem">
+          Inspecciona dónde vive físicamente el volumen:
+        </p>
+        <pre class="codigo"><span class="k">docker volume ls</span>
+<span class="k">docker volume inspect</span> minidc_db_data</pre>
+        <p style="margin-top:12px; color:var(--texto-2); font-size:.92rem">
+          <b>Pregunta para tu bitácora:</b> ¿por qué el esquema de <code>mariadb/init/01_esquema.sql</code>
+          solo se ejecuta la primera vez? ¿Qué tiene que ver con el volumen?
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════ 04 · MONITOREO Y SEGURIDAD ═════════════════════════ -->
+<section class="bloque" id="monitoreo">
+  <div class="contenedor">
+    <div class="titulo-bloque"><span class="num">04</span><h2>Monitoreo, gestión y seguridad</h2></div>
+    <p class="sub">Sin monitoreo tu infraestructura está ciega. Estas herramientas también corren en contenedores y piden credenciales: nadie entra sin identificarse.</p>
+    <div class="rejilla-3">
+      <div class="tarjeta herramienta">
+        <div class="icono">📊</div>
+        <h3>Grafana <span class="mono" style="color:var(--texto-3)">:3000</span></h3>
+        <p>Tablero <b>“Mini Data Center · Balanceo y bitácoras”</b>: peticiones por nodo, códigos HTTP, tiempo de respuesta p95, visitas en MariaDB y logs en vivo.</p>
+        <div class="cred">usuario: GRAFANA_ADMIN_USER<br>contraseña: GRAFANA_ADMIN_PASSWORD<br><span style="color:var(--texto-3)">(definidas en tu archivo .env)</span></div>
+        <div class="acciones"><a class="btn btn-sec btn-chico" id="link-grafana" href="#" target="_blank" rel="noopener">Abrir Grafana ↗</a></div>
+      </div>
+      <div class="tarjeta herramienta">
+        <div class="icono">🏗️</div>
+        <h3>Portainer <span class="mono" style="color:var(--texto-3)">:9443</span></h3>
+        <p>Consola visual de Docker: contenedores, redes, volúmenes y logs sin escribir comandos. También existe como <b>extensión de Docker Desktop</b>.</p>
+        <div class="cred">El usuario admin se crea la 1.ª vez (mín. 12 caracteres).<br><span style="color:var(--texto-3)">Tienes 5 min; si expira: docker compose restart portainer</span></div>
+        <div class="acciones"><a class="btn btn-sec btn-chico" id="link-portainer" href="#" target="_blank" rel="noopener">Abrir Portainer ↗</a></div>
+      </div>
+      <div class="tarjeta herramienta">
+        <div class="icono">🧾</div>
+        <h3>Alloy + Loki <span class="mono" style="color:var(--texto-3)">logs</span></h3>
+        <p><b>Alloy</b> lee la salida de cada contenedor (vía <code>docker.sock</code>) y la envía a <b>Loki</b>, que la indexa por etiquetas. Prueba en Grafana → Explore:</p>
+        <pre class="codigo">{servicio="lb"} | json | nodo="web2"</pre>
+      </div>
+    </div>
+
+    <div class="tarjeta" style="margin-top:16px; padding:0; overflow:hidden">
+      <table class="cia">
+        <thead><tr><th style="width:210px">Principio</th><th>¿Dónde lo aplicamos en este ejercicio?</th></tr></thead>
+        <tbody>
+          <tr><td><span class="letra" style="background:#1a73e8">C</span>Confidencialidad</td>
+              <td>Contraseñas en <code>.env</code> (fuera del código y del repositorio) · Grafana sin registro libre ni acceso anónimo · MariaDB publicada solo en <code>127.0.0.1:3306</code> · los nodos web no ven la <code>red_datos</code>.</td></tr>
+          <tr><td><span class="letra" style="background:#16a34a">I</span>Integridad</td>
+              <td>Sitios montados en <b>solo lectura</b> (<code>:ro</code>) · usuarios de BD con <b>mínimo privilegio</b> (<code>app_user</code>: SELECT/INSERT; <code>grafana_ro</code>: SELECT) · consultas parametrizadas y validación en la API · límite de 64 KB por petición.</td></tr>
+          <tr><td><span class="letra" style="background:#d97706">A</span>Disponibilidad</td>
+              <td>Tres réplicas detrás de un balanceador · <code>max_fails</code> + <code>proxy_next_upstream</code> (failover) · <code>restart: unless-stopped</code> · <i>healthchecks</i> · volúmenes persistentes y rotación de logs.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════ 05 · RETOS ═════════════════════════ -->
+<section class="bloque" id="retos">
+  <div class="contenedor">
+    <div class="titulo-bloque"><span class="num">05</span><h2>Retos: zonas editables</h2></div>
+    <p class="sub">Predice el resultado en el <b>modo simulación</b>, haz el cambio real, compruébalo en el laboratorio y en Grafana, y documenta todo en tu bitácora (captura + explicación).</p>
+    <div class="retos" id="lista-retos">
+
+      <article class="reto">
+        <div class="cab"><span class="n">1</span><h3 style="margin:0">Dale personalidad a tu nodo</h3><span class="nivel">Básico</span></div>
+        <span class="archivo">sitios/web2/index.html · ZONA A</span>
+        <p>Cambia <code>nombre</code>, <code>color</code> y <code>mensaje</code> de web2. Guarda y recarga con <kbd>F5</kbd> hasta que te toque web2.</p>
+        <div class="espera">Ves el cambio <b>sin reiniciar</b>: la carpeta es un <i>bind mount</i>. Para que <code>/whoami</code> también cambie, edita <code>NODO_NOMBRE</code>/<code>NODO_COLOR</code> en el compose y ejecuta <code>docker compose up -d web2</code>.</div>
+      </article>
+
+      <article class="reto">
+        <div class="cab"><span class="n">2</span><h3 style="margin:0">Pesos: un nodo más potente</h3><span class="nivel">Básico</span></div>
+        <span class="archivo">nginx/lb.conf · ZONA 2</span>
+        <pre class="codigo">server web1:80 resolve <span class="k">weight=3</span> max_fails=2 fail_timeout=10s;</pre>
+        <pre class="codigo"><span class="k">docker compose exec lb nginx -t</span>        <span class="c"># valida</span>
+<span class="k">docker compose exec lb nginx -s reload</span>  <span class="c"># aplica sin cortar</span></pre>
+        <div class="espera">Con 30 peticiones: ≈ 18 / 6 / 6 (60 % · 20 % · 20 %).</div>
+      </article>
+
+      <article class="reto">
+        <div class="cab"><span class="n">3</span><h3 style="margin:0">Cambia el algoritmo</h3><span class="nivel">Intermedio</span></div>
+        <span class="archivo">nginx/lb.conf · ZONA 1</span>
+        <p>Descomenta <code>ip_hash;</code>, recarga Nginx y lanza 30 peticiones. Repite con <code>least_conn;</code> y concurrencia 8. Actualiza el texto de <code>/lb-info</code>.</p>
+        <div class="espera">ip_hash: las 30 caen en un solo nodo (tú eres un solo cliente). ¿Para qué sirve esa “afinidad de sesión”?</div>
+      </article>
+
+      <article class="reto">
+        <div class="cab"><span class="n">4</span><h3 style="margin:0">Simula una falla (failover)</h3><span class="nivel">Intermedio</span></div>
+        <span class="archivo">terminal</span>
+        <pre class="codigo"><span class="k">docker compose stop web2</span>
+<span class="c"># lanza la prueba y mira Grafana</span>
+<span class="k">docker compose start web2</span></pre>
+        <div class="espera">0 fallos: el tráfico se reparte entre web1 y web3. En Grafana, la serie de web2 se corta y luego regresa.</div>
+      </article>
+
+      <article class="reto">
+        <div class="cab"><span class="n">5</span><h3 style="margin:0">Agrega un 4.º nodo</h3><span class="nivel">Intermedio</span></div>
+        <span class="archivo">docker-compose.yml · lb.conf · comun/config.js</span>
+        <p>Copia la carpeta <code>sitios/web3</code> como <code>sitios/web4</code>, duplica el servicio <code>web3</code> como <code>web4</code>, añade <code>server web4:80 resolve;</code> y el nodo en <code>config.js</code>.</p>
+        <pre class="codigo"><span class="k">docker compose up -d web4</span>
+<span class="k">docker compose exec lb nginx -s reload</span></pre>
+        <div class="espera">El diagrama dibuja el nuevo nodo y el reparto pasa a ≈ 25 % cada uno.</div>
+      </article>
+
+      <article class="reto">
+        <div class="cab"><span class="n">6</span><h3 style="margin:0">Escalamiento horizontal con <code>--scale</code></h3><span class="nivel">Avanzado</span></div>
+        <span class="archivo">docker-compose.yml · lb.conf</span>
+        <p>Reemplaza web1–web3 por <b>un solo</b> servicio <code>web</code> con <code>NODO_ID: auto</code>, y en el upstream deja solo <code>server web:80 resolve;</code>.</p>
+        <pre class="codigo"><span class="k">docker compose up -d --scale web=5</span></pre>
+        <div class="espera">El DNS de Docker devuelve 5 IPs y Nginx (con <code>resolve</code>) las balancea. La página identifica cada réplica por su contenedor.</div>
+      </article>
+
+      <article class="reto">
+        <div class="cab"><span class="n">7</span><h3 style="margin:0">Pon a prueba la seguridad</h3><span class="nivel">Intermedio</span></div>
+        <span class="archivo">terminal · Grafana</span>
+        <pre class="codigo"><span class="k">docker compose exec db mariadb -ugrafana_ro -p dc_app</span>
+<span class="c">-- intenta escribir con el usuario de solo lectura:</span>
+<span class="s">INSERT INTO visitas (nodo) VALUES ('hacker');</span></pre>
+        <div class="espera">MariaDB responde <code>INSERT command denied</code>. Explica en tu bitácora por qué eso protege la <b>integridad</b>.</div>
+      </article>
+
+      <article class="reto">
+        <div class="cab"><span class="n">8</span><h3 style="margin:0">Mide con la terminal</h3><span class="nivel">Básico</span></div>
+        <span class="archivo">pruebas/carga.sh · pruebas/carga.ps1</span>
+        <pre class="codigo"><span class="c"># Linux / macOS / WSL</span>
+<span class="k">bash pruebas/carga.sh 60</span>
+<span class="c"># Windows PowerShell</span>
+<span class="k">.\pruebas\carga.ps1 -Total 60</span></pre>
+        <div class="espera">El conteo por nodo debe coincidir con lo que muestran esta página y Grafana.</div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════ 06 · COMANDOS ═════════════════════════ -->
+<section class="bloque" id="comandos">
+  <div class="contenedor">
+    <div class="titulo-bloque"><span class="num">06</span><h2>Comandos clave</h2></div>
+    <div class="comandos">
+      <div class="comando"><p>Levantar todo (construye la imagen de la API)</p><pre class="codigo">docker compose up -d --build</pre></div>
+      <div class="comando"><p>¿Están todos “healthy”?</p><pre class="codigo">docker compose ps</pre></div>
+      <div class="comando"><p>Ver la bitácora del balanceador en vivo</p><pre class="codigo">docker compose logs -f lb</pre></div>
+      <div class="comando"><p>Preguntar “¿quién soy?” al balanceador</p><pre class="codigo">curl -s http://localhost:8080/whoami</pre></div>
+      <div class="comando"><p>Validar y recargar Nginx sin cortar el servicio</p><pre class="codigo">docker compose exec lb nginx -t && docker compose exec lb nginx -s reload</pre></div>
+      <div class="comando"><p>Apagar / encender un nodo</p><pre class="codigo">docker compose stop web2 && docker compose start web2</pre></div>
+      <div class="comando"><p>Entrar a MariaDB como root</p><pre class="codigo">docker compose exec db mariadb -uroot -p dc_app</pre></div>
+      <div class="comando"><p>Consumo de CPU/RAM por contenedor</p><pre class="codigo">docker stats --no-stream</pre></div>
+      <div class="comando"><p>Listar e inspeccionar volúmenes</p><pre class="codigo">docker volume ls && docker volume inspect minidc_db_data</pre></div>
+      <div class="comando"><p>Apagar todo (conservando datos)</p><pre class="codigo">docker compose down</pre></div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="contenedor">
+    <span>Mini Data Center con Docker · Sello A · Ejercicio 1 — Centro de Datos · Ing. en Datos e IA</span>
+    <span>Servido por <b data-nodo="id">web1</b> · <span id="pie-hora">—</span></span>
+  </div>
+</footer>
+
+</body>
+</html>
