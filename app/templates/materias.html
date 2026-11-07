@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block contenido %}
+
+<h1>Administrar materias</h1>
+
+<p>Agrega las asignaturas que estarán disponibles en el repositorio académico.</p>
+
+<section class="tarjeta">
+    <h2>Agregar nueva materia</h2>
+
+    <form method="POST" action="{{ url_for('administrar_materias') }}">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+
+        <label for="nombre">Nombre de la materia</label>
+
+        <input
+            type="text"
+            id="nombre"
+            name="nombre"
+            placeholder="Ej. Cálculo Multivariable"
+            maxlength="100"
+            required
+        >
+
+        <button type="submit">Agregar materia</button>
+    </form>
+</section>
+
+<section class="tarjeta">
+    <h2>Materias registradas</h2>
+
+    {% if materias %}
+        <ul>
+            {% for materia in materias %}
+                <li>{{ materia.nombre }}</li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>Todavía no hay materias registradas.</p>
+    {% endif %}
+</section>
+
+{% endblock %}

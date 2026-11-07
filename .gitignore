@@ -3,3 +3,8 @@
 
 __pycache__/
 *.pyc
+
+# Copias de respaldo
+*.bak
+docker-compose.nuevo.yml
+README.original.md

@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block titulo %}Error {{ codigo }} · Repositorio UPQ{% endblock %}
+{% block contenido %}
+<h1>Error {{ codigo }}</h1>
+<p>{{ mensaje }}</p>
+<p><a href="{{ url_for('inicio') }}">Volver al inicio</a></p>
+{% endblock %}

@@ -1,0 +1,44 @@
+:root{
+  --bg:#f3f6f8; --surface:#fff; --ink:#14212b; --muted:#53636f; --line:#d5dee5;
+  --accent:#1d63ed; --accent-ink:#fff; --ok:#17803d; --ok-soft:#e2f4e8;
+  --err:#b42318; --err-soft:#fdeceb;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0c141a; --surface:#131f28; --ink:#e3ecf2; --muted:#9aaebc; --line:#24353f;
+  --accent:#6aa3ff; --accent-ink:#0c141a; --ok:#4cc27a; --ok-soft:#10301d;
+  --err:#f1978f; --err-soft:#3a1714; color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+a{color:var(--accent)}
+.contenedor{max-width:900px;margin:0 auto;padding:0 16px}
+.fila{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.barra{background:var(--surface);border-bottom:1px solid var(--line);padding:10px 0}
+.barra .fila{justify-content:space-between}
+.marca{font-weight:700;text-decoration:none;color:var(--ink)}
+.quien{color:var(--muted);font-size:.9rem}
+.en-linea{display:inline;margin:0}
+.enlace{background:none;border:0;color:var(--accent);font:inherit;cursor:pointer;padding:0;text-decoration:underline}
+h1{font-size:1.6rem;margin:24px 0 12px}
+h2{font-size:1.1rem;margin:0 0 4px}
+.busqueda{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.busqueda input{flex:1 1 240px}
+input,select,textarea{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);width:100%}
+.busqueda select{width:auto}
+.boton{display:inline-block;font:inherit;background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:8px 14px;cursor:pointer;text-decoration:none}
+.boton.peligro{background:transparent;color:var(--err);border:1px solid var(--err)}
+.tarjeta{display:flex;justify-content:space-between;gap:16px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:12px}
+.tarjeta p{margin:4px 0}
+.acciones{display:flex;flex-direction:column;gap:8px;align-items:stretch;flex:none}
+.meta{color:var(--muted);font-size:.9rem}
+.etiqueta{background:var(--ok-soft);color:var(--ok);border-radius:99px;padding:1px 10px;font-size:.82rem;margin-right:6px}
+.formulario{display:grid;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px}
+.formulario.angosto{max-width:420px}
+.formulario label{display:grid;gap:4px;font-weight:600}
+.formulario small{font-weight:400;color:var(--muted)}
+.aviso{border-radius:8px;padding:10px 14px;margin:14px 0}
+.aviso.ok{background:var(--ok-soft);color:var(--ok)}
+.aviso.error{background:var(--err-soft);color:var(--err)}
+.vacio{color:var(--muted)}
+.pie{color:var(--muted);font-size:.85rem;padding:28px 16px}
+.nodo{color:#fff;border-radius:6px;padding:2px 8px;font-family:ui-monospace,monospace}
+@media (max-width:560px){.tarjeta{flex-direction:column}.acciones{flex-direction:row}}

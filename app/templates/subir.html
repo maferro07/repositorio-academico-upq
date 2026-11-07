@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block titulo %}Subir documento · Repositorio UPQ{% endblock %}
+{% block contenido %}
+<h1>Subir un documento</h1>
+<form method="post" enctype="multipart/form-data" class="formulario">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>Título
+    <input name="titulo" required minlength="3" maxlength="150" value="{{ request.form.get('titulo', '') }}">
+  </label>
+  <label>Materia
+    <select name="materia" required>
+      <option value="">— elige —</option>
+      {% for m in materias %}
+        <option value="{{ m.id }}" {% if request.form.get('materia', type=int) == m.id %}selected{% endif %}>{{ m.nombre }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Descripción (opcional)
+    <textarea name="descripcion" rows="3" maxlength="2000">{{ request.form.get('descripcion', '') }}</textarea>
+  </label>
+  <label>Archivo
+    <input type="file" name="archivo" required accept="{% for e in extensiones %}.{{ e }}{{ ',' if not loop.last }}{% endfor %}">
+    <small>Máximo {{ max_mb }} MB. Formatos: {{ extensiones | join(', ') }}.</small>
+  </label>
+  <button class="boton">Publicar</button>
+</form>
+{% endblock %}
+

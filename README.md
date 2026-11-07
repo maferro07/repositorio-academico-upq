@@ -71,86 +71,247 @@ minidc-ejercicio1/
 ```bash
 # 1) Secretos: copia la plantilla y CAMBIA las contraseñas
 cp .env.example .env            # Windows: copy .env.example .env
+# Repositorio Académico UPQ
+## Mini Centro de Datos con Docker Compose
 
-# 2) Levanta todo (la 1.ª vez descarga imágenes y construye la API)
+**Asignatura:** Centro de Datos  
+**Carrera:** Ingeniería en Datos e Inteligencia Artificial  
+**Institución:** Universidad Politécnica de Querétaro
+
+---
+
+## 1. Descripción del proyecto
+
+El Repositorio Académico UPQ es una aplicación web diseñada para facilitar el almacenamiento, organización y consulta de documentos académicos.
+
+El proyecto se desarrolla sobre una arquitectura de mini centro de datos utilizando Docker Compose, que permite administrar diferentes servicios mediante contenedores.
+
+La aplicación utiliza tres servidores Flask, un balanceador de carga Nginx, una base de datos MariaDB y herramientas de monitoreo.
+
+## 2. Objetivo
+
+Implementar un mini centro de datos funcional mediante Docker Compose, integrando una aplicación web que permita administrar documentos académicos y demostrar conceptos de balanceo de carga, persistencia de datos, administración de contenedores y observabilidad.
+
+## 3. Tecnologías utilizadas
+
+| Tecnología | Función |
+|---|---|
+| Docker | Ejecutar aplicaciones mediante contenedores. |
+| Docker Compose | Administrar los servicios del proyecto. |
+| Python y Flask | Desarrollar la aplicación web. |
+| MariaDB | Almacenar la información académica. |
+| Nginx | Distribuir solicitudes entre servidores. |
+| Grafana | Visualizar registros del sistema. |
+| Loki | Almacenar bitácoras. |
+| Alloy | Recopilar y enviar registros. |
+| Portainer | Administrar contenedores visualmente. |
+
+## 4. Arquitectura del mini centro de datos
+
+El proyecto cuenta con nueve servicios configurados en Docker Compose:
+
+- db
+- web1
+- web2
+- web3
+- lb
+- loki
+- alloy
+- grafana
+- portainer
+
+### Diagrama de arquitectura
+
+```text
+                USUARIO
+                   |
+                   v
+          NGINX - Puerto 8080
+          Balanceador de carga
+                   |
+          +--------+--------+
+          |        |        |
+          v        v        v
+        WEB1     WEB2     WEB3
+        Flask    Flask    Flask
+          |        |        |
+          +--------+--------+
+                   |
+                   v
+                MariaDB
+
+       MONITOREO Y OBSERVABILIDAD
+
+     Contenedores -> Alloy -> Loki
+                                |
+                                v
+                             Grafana
+
+       ADMINISTRACIÓN: PORTAINER
+```
+
+## 5. Funcionalidades de la aplicación
+
+El Repositorio Académico UPQ permite:
+
+- Registrar usuarios.
+- Iniciar y cerrar sesión.
+- Diferenciar usuarios administradores y estudiantes.
+- Consultar documentos académicos.
+- Buscar documentos por título o descripción.
+- Filtrar documentos por materia.
+- Subir documentos.
+- Descargar archivos.
+- Administrar materias mediante una cuenta de administrador.
+
+## 6. Estructura del proyecto
+
+```text
+repositorio-upq/
+|
+|-- app/
+|-- nginx/
+|-- mariadb/
+|-- grafana/
+|-- observabilidad/
+|-- pruebas/
+|-- sitios/
+|-- docker-compose.yml
+|-- .env.example
+|-- README.md
+```
+
+La carpeta `app/` contiene el desarrollo de la aplicación web.
+
+El archivo `docker-compose.yml` define los servicios necesarios para ejecutar el mini centro de datos.
+
+## 7. Requisitos
+
+Para ejecutar el proyecto se necesita:
+
+- Docker Engine.
+- Docker Compose.
+- Una computadora con recursos suficientes para ejecutar los contenedores.
+- Un navegador web.
+
+## 8. Ejecución del proyecto
+
+### Paso 1. Configurar las variables de entorno
+
+Crear el archivo `.env` utilizando la plantilla:
+
+```bash
+cp .env.example .env
+```
+
+Configurar las contraseñas y demás variables necesarias.
+
+**Importante:** no compartir el archivo `.env`, ya que puede contener información sensible.
+
+### Paso 2. Iniciar los contenedores
+
+```bash
 docker compose up -d --build
+```
 
-# 3) Verifica: todos deben decir "running" y los que tienen healthcheck "healthy"
+### Paso 3. Comprobar los servicios
+
+```bash
 docker compose ps
 ```
 
-Abre en el navegador:
+### Paso 4. Acceder a las herramientas
 
-| URL | Qué verás |
+| Servicio | Dirección |
 |---|---|
-| http://localhost:8080 | La app balanceada. Pulsa **F5** varias veces: cambia de nodo y de color. |
-| http://localhost:3000 | Grafana → entra con `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` de tu `.env`. |
-| https://localhost:9443 | Portainer → crea el usuario admin (mín. 12 caracteres) **en menos de 5 min**. Acepta el certificado autofirmado. |
+| Repositorio Académico | http://localhost:8080 |
+| Grafana | http://localhost:3000 |
+| Portainer | https://localhost:9443 |
 
-> **VM en la nube:** cambia `localhost` por la IP pública y abre en el firewall / grupo de seguridad **solo** los puertos 8080, 3000 y 9443 (nunca el de MariaDB).
+## 9. Pruebas realizadas
 
-> **Sin Docker todavía:** abre `sitios/web1/index.html` con doble clic. La página entra en **modo simulación** y puedes practicar los algoritmos de balanceo.
+### Balanceo de carga
 
----
+Se comprobó que Nginx distribuye las solicitudes entre los tres servidores Flask.
 
-### 5. Lo que tienes que hacer (y evidenciar)
+Al actualizar la página, se observaron respuestas de:
 
-1. **Balanceo:** en la sección *Laboratorio* lanza 30 peticiones con round robin. Debe salir ≈ 10/10/10.
-   Compara con la terminal: `bash pruebas/carga.sh 30` o `.\pruebas\carga.ps1 -Total 30`.
-2. **Persistencia:** guarda 3 pruebas con *💾 Guardar en MariaDB*. Ejecuta `docker compose down` y `docker compose up -d`. ¿Siguen ahí? Ahora `docker compose down -v`. ¿Y ahora? Explica por qué.
-3. **Portainer:** localiza los 10 contenedores, las 3 redes y los 4 volúmenes. Abre los logs de `lb` desde la interfaz.
-4. **Grafana:** abre el tablero *Mini Data Center · Balanceo y bitácoras*. Lanza una prueba y observa cómo crecen las barras por nodo.
-5. **Retos (sección 05 de la página):** pesos, `ip_hash`/`least_conn`, failover, 4.º nodo, `--scale`, seguridad.
+- Nodo Alfa - web1.
+- Nodo Beta - web2.
+- Nodo Gamma - web3.
 
-#### Evidencias para la bitácora semanal (documento + video por equipo)
+### Base de datos
 
-| Criterio de la rúbrica | Evidencia sugerida |
-|---|---|
-| Contenido técnico (30 %) | Explica `upstream`, el mapeo `8080:80`, volumen vs. bind mount, por qué `init/` corre una sola vez, y la triada CIA del ejercicio. |
-| Claridad expositiva (30 %) | Recorre el diagrama de la página en el video: de tu navegador hasta MariaDB y Grafana. |
-| Creatividad y estructura (20 %) | Personaliza los 3 nodos (ZONA A) con una metáfora propia del equipo. |
-| Funcionamiento (20 %) | Capturas de `docker compose ps` (healthy), del laboratorio, del tablero de Grafana y del reto de failover sin fallos. |
+Se verificó el funcionamiento de MariaDB mediante las operaciones de la aplicación, incluyendo la administración de materias y el registro de documentos.
 
----
+### Subida y descarga de documentos
 
-### 6. Comandos que vas a usar mucho
+Se publicó un archivo PDF en el repositorio y posteriormente se descargó y abrió correctamente.
+
+### Monitoreo y bitácoras
+
+Se comprobó que Grafana permite consultar los registros almacenados en Loki.
+
+Consulta utilizada:
+
+```logql
+{servicio="lb"}
+```
+
+Esta consulta permitió visualizar registros del balanceador de carga Nginx.
+
+### Acceso desde diferentes dispositivos
+
+Se comprobó que la aplicación puede abrirse desde una computadora Ubuntu y desde un iPhone conectado a la misma red local.
+
+## 10. Comandos útiles
+
+Consultar el estado de los contenedores:
 
 ```bash
-docker compose ps                                   # estado de los servicios
-docker compose logs -f lb                           # bitácora JSON del balanceador
-curl -s http://localhost:8080/whoami                # ¿qué nodo me respondió?
-docker compose exec lb nginx -t                     # valida lb.conf
-docker compose exec lb nginx -s reload              # aplica cambios sin cortar el servicio
-docker compose stop web2 && docker compose start web2   # simula una falla
-docker compose exec db mariadb -uroot -p dc_app     # entra a la base de datos
-docker stats --no-stream                            # CPU/RAM por contenedor
-docker volume inspect minidc_db_data                # dónde vive el volumen
-docker compose down          # apaga (conserva datos)   |   down -v  → borra volúmenes
+docker compose ps
 ```
 
----
+Consultar los registros del balanceador:
 
-### 7. Solución de problemas
-
-| Síntoma | Causa probable / solución |
-|---|---|
-| `required variable ... is missing` | No creaste `.env`. Haz `cp .env.example .env`. |
-| `port is already allocated` / `bind: An attempt was made to access a socket in a way forbidden` | Otro programa (MySQL, XAMPP, otra app) usa ese puerto, o Windows lo reservó. Revisa con `netstat -ano \| findstr :3307` y `netsh interface ipv4 show excludedportrange protocol=tcp`. Cambia `LB_PUERTO`, `GRAFANA_PUERTO` o `DB_PUERTO` en `.env`. |
-| La API dice “sin conexión” a MariaDB | La BD tarda ~20 s la primera vez. Revisa `docker compose logs db`. |
-| Cambié `.env` o `init/` y no pasa nada | Los scripts de `init/` y la contraseña de Grafana solo se aplican al **crear** el volumen: `docker compose down -v` (borra datos). |
-| `02_usuarios.sh: $'\r': command not found` | Git convirtió el archivo a CRLF en Windows. Guárdalo con fin de línea **LF** (VS Code, esquina inferior derecha). |
-| Portainer: “timed out for security reasons” | No creaste el admin en 5 min: `docker compose restart portainer`. |
-| Grafana sin datos en paneles de logs | Espera ~30 s y lanza una prueba. Revisa `docker compose logs alloy`. |
-| `host not found in upstream` | Usas una imagen de Nginx < 1.27.3 (no soporta `resolve`). Deja `nginx:1.28-alpine`. |
-| `invalid parameter "resolve"` | Igual que el anterior. |
-| La página dice “Simulación” estando en Docker | Entraste por un puerto que no es el del balanceador. Usa `:8080`. |
-
----
-
-### 8. Nota sobre el reto 6 (`--scale`)
-
-Al usar `NODO_ID: auto`, todas las réplicas firman `X-Nodo: auto`; la página las distingue por el nombre del contenedor. En Grafana agrupa por `upstream` en lugar de `nodo`:
-
+```bash
+docker compose logs lb
 ```
-sum by (upstream) (count_over_time({servicio="lb"} | json | __error__="" [10s]))
+
+Consultar el consumo de recursos:
+
+```bash
+docker stats --no-stream
 ```
+
+Detener los servicios sin eliminar los volúmenes:
+
+```bash
+docker compose down
+```
+
+Iniciar nuevamente los servicios:
+
+```bash
+docker compose up -d
+```
+
+## 11. Seguridad
+
+El proyecto utiliza variables de entorno para administrar configuraciones sensibles.
+
+Se recomienda:
+
+- No compartir contraseñas.
+- No publicar el archivo `.env`.
+- Mantener protegidas las cuentas de administrador.
+- No subir documentos con información personal durante las pruebas.
+- Evitar exponer los servicios administrativos directamente a internet.
+
+## 12. Conclusión
+
+El desarrollo del Repositorio Académico UPQ permitió implementar un mini centro de datos funcional utilizando Docker Compose.
+
+Mediante la integración de Flask, MariaDB, Nginx, Grafana, Loki, Alloy y Portainer, se construyó una arquitectura basada en contenedores que permite ejecutar una aplicación web, distribuir solicitudes entre servidores y consultar registros del sistema.
+
+El proyecto demuestra la importancia de la integración de diferentes tecnologías para administrar aplicaciones y servicios dentro de una infraestructura de centro de datos.

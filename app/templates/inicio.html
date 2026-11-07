@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block contenido %}
+<h1>Documentos</h1>
+
+<form method="get" action="{{ url_for('inicio') }}" class="busqueda">
+  <input type="search" name="q" value="{{ q }}" placeholder="Buscar por título, descripción o nombre de archivo" aria-label="Buscar">
+  <select name="materia" aria-label="Materia">
+    <option value="0">Todas las materias</option>
+    {% for m in materias %}
+      <option value="{{ m.id }}" {% if m.id == materia %}selected{% endif %}>{{ m.nombre }}</option>
+    {% endfor %}
+  </select>
+  <button class="boton">Buscar</button>
+</form>
+
+{% if not docs %}
+  <p class="vacio">No hay documentos{% if q or materia %} con ese criterio{% endif %}.
+     <a href="{{ url_for('subir') }}">Sube el primero</a>.</p>
+{% endif %}
+
+{% for d in docs %}
+<article class="tarjeta">
+  <div>
+    <h2>{{ d.titulo }}</h2>
+    <p class="meta">
+      <span class="etiqueta">{{ d.materia }}</span>
+      {{ d.autor }} · {{ d.subido.strftime('%Y-%m-%d') }} · {{ d.tamano | filesizeformat }} · {{ d.descargas }} descarga{{ '' if d.descargas == 1 else 's' }}
+    </p>
+    {% if d.descripcion %}<p>{{ d.descripcion }}</p>{% endif %}
+    <p class="meta">📎 {{ d.nombre_original }}</p>
+  </div>
+  <div class="acciones">
+    <a class="boton" href="{{ url_for('descargar', doc_id=d.id) }}">Descargar</a>
+    {% if usuario.id == d.usuario_id or usuario.rol == 'admin' %}
+      <form method="post" action="{{ url_for('eliminar', doc_id=d.id) }}"
+            onsubmit="return confirm('¿Eliminar este documento?')">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="boton peligro">Eliminar</button>
+      </form>
+    {% endif %}
+  </div>
+</article>
+{% endfor %}
+{% endblock %}
+
